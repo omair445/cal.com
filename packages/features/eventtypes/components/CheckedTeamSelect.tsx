@@ -1,8 +1,8 @@
 "use client";
 
 import { useAutoAnimate } from "@formkit/auto-animate/react";
-import { useState } from "react";
-import type { Options, Props } from "react-select";
+import { useCallback, useMemo, useState } from "react";
+import type { Options, Props, components as reactSelectComponents } from "react-select";
 
 import { useIsPlatform } from "@calcom/atoms/hooks/useIsPlatform";
 import type { SelectClassNames } from "@calcom/features/eventtypes/lib/types";
@@ -20,6 +20,8 @@ import type {
   WeightDialogCustomClassNames,
 } from "@calcom/features/eventtypes/components/dialogs/HostEditDialogs";
 import { PriorityDialog, WeightDialog } from "@calcom/features/eventtypes/components/dialogs/HostEditDialogs";
+
+const isValidEmail = (str: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str);
 
 export type CheckedSelectOption = {
   avatar: string;
@@ -55,6 +57,7 @@ export const CheckedTeamSelect = ({
   isRRWeightsEnabled,
   customClassNames,
   groupId,
+  onInviteEmail,
   ...props
 }: Omit<Props<CheckedSelectOption, true>, "value" | "onChange"> & {
   options?: Options<CheckedSelectOption>;
@@ -63,10 +66,12 @@ export const CheckedTeamSelect = ({
   isRRWeightsEnabled?: boolean;
   customClassNames?: CheckedTeamSelectCustomClassNames;
   groupId: string | null;
+  onInviteEmail?: (email: string) => void;
 }) => {
   const isPlatform = useIsPlatform();
   const [priorityDialogOpen, setPriorityDialogOpen] = useState(false);
   const [weightDialogOpen, setWeightDialogOpen] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
 
   const [currentOption, setCurrentOption] = useState(value[0] ?? null);
 
@@ -75,8 +80,43 @@ export const CheckedTeamSelect = ({
 
   const valueFromGroup = groupId ? value.filter((host) => host.groupId === groupId) : value;
 
+  // Build options with an email invite option when applicable
+  const augmentedOptions = useMemo(() => {
+    const trimmed = searchInput.trim();
+    if (!trimmed || !isValidEmail(trimmed) || !onInviteEmail) return options;
+
+    // Check if the email already matches an existing option
+    const emailAlreadyExists = (options as CheckedSelectOption[]).some(
+      (opt) => opt.label.toLowerCase().includes(trimmed.toLowerCase()) || opt.value === trimmed
+    );
+    if (emailAlreadyExists) return options;
+
+    // Check if already selected
+    const emailAlreadySelected = value.some(
+      (opt) => opt.label.toLowerCase().includes(trimmed.toLowerCase()) || opt.value === trimmed
+    );
+    if (emailAlreadySelected) return options;
+
+    const inviteOption: CheckedSelectOption = {
+      value: `invite:${trimmed}`,
+      label: `✉ ${t("invite")} ${trimmed}`,
+      avatar: "",
+      groupId: null,
+    };
+    return [...(options as CheckedSelectOption[]), inviteOption];
+  }, [options, searchInput, onInviteEmail, value, t]);
+
   const handleSelectChange = (newValue: readonly CheckedSelectOption[]) => {
     const otherGroupsHosts = getHostsFromOtherGroups(value, groupId);
+
+    // Check if an invite option was selected
+    const inviteOpt = newValue.find((opt) => opt.value.startsWith("invite:"));
+    if (inviteOpt && onInviteEmail) {
+      const email = inviteOpt.value.replace("invite:", "");
+      onInviteEmail(email);
+      setSearchInput("");
+      return;
+    }
 
     const newValueAllGroups = [...otherGroupsHosts, ...newValue.map((host) => ({ ...host, groupId }))];
     props.onChange(newValueAllGroups);
@@ -89,14 +129,22 @@ export const CheckedTeamSelect = ({
         name={props.name}
         placeholder={props.placeholder || t("select")}
         isSearchable={true}
-        options={options}
+        options={augmentedOptions}
         value={valueFromGroup}
         onChange={handleSelectChange}
+        onInputChange={(val) => setSearchInput(val)}
         isMulti
         className={customClassNames?.hostsSelect?.select}
         innerClassNames={{
           ...customClassNames?.hostsSelect?.innerClassNames,
           control: "rounded-md",
+        }}
+        filterOption={(option, input) => {
+          // Always show invite options
+          if (option.value.startsWith("invite:")) return true;
+          // Default filter behavior
+          const label = option.label?.toLowerCase() ?? "";
+          return label.includes(input.toLowerCase());
         }}
       />
       {/* This class name conditional looks a bit odd but it allows a seamless transition when using autoanimate

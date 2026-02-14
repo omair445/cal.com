@@ -103,6 +103,8 @@
   "report_booking_description_placeholder": "Please provide additional details about why you're reporting this booking (optional)",
   "manage_this_event": "Manage this event",
   "invite_team_member": "Invite team member",
+  "invitation_sent": "Invitation sent successfully",
+  "invite_and_add_to_team": "Invite {{email}} to team",
   "invite_team_individual_segment": "Invite individual",
   "invite_team_bulk_segment": "Bulk import",
   "invite_team_notifcation_badge": "Inv.",

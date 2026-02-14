@@ -9,8 +9,11 @@ import type {
 import { Segment } from "./Segment";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import type { AttributesQueryValue } from "@calcom/lib/raqb/types";
+import { CreationSource } from "@calcom/prisma/enums";
+import { showToast } from "@calcom/ui/components/toast";
+import { trpc } from "@calcom/trpc/react";
 import { Label, SettingsToggle } from "@calcom/ui/components/form";
-import { type ComponentProps, type Dispatch, type SetStateAction, useMemo } from "react";
+import { type ComponentProps, type Dispatch, type SetStateAction, useCallback, useMemo } from "react";
 import { Controller, useFormContext } from "react-hook-form";
 import type { Options } from "react-select";
 import { AddMembersWithSwitchWebWrapper } from "./AddMembersWithSwitchWebWrapper";
@@ -63,6 +66,7 @@ const CheckedHostField = ({
   isRRWeightsEnabled,
   groupId,
   customClassNames,
+  onInviteEmail,
   ...rest
 }: {
   labelText?: string;
@@ -74,6 +78,7 @@ const CheckedHostField = ({
   helperText?: React.ReactNode | string;
   isRRWeightsEnabled?: boolean;
   groupId: string | null;
+  onInviteEmail?: (email: string) => void;
 } & Omit<Partial<ComponentProps<typeof CheckedTeamSelect>>, "onChange" | "value">) => {
   return (
     <div className="flex flex-col rounded-md">
@@ -116,6 +121,7 @@ const CheckedHostField = ({
           isRRWeightsEnabled={isRRWeightsEnabled}
           customClassNames={customClassNames}
           groupId={groupId}
+          onInviteEmail={onInviteEmail}
           {...rest}
         />
       </div>
@@ -264,6 +270,34 @@ export function AddMembersWithSwitch({
 }: AddMembersWithSwitchProps) {
   const { t } = useLocale();
   const { setValue } = useFormContext<FormValues>();
+
+  const inviteMemberMutation = trpc.viewer.teams.inviteMember.useMutation({
+    onSuccess: () => {
+      showToast(t("invitation_sent"), "success");
+    },
+    onError: (error) => {
+      showToast(error.message || t("something_went_wrong"), "error");
+    },
+  });
+
+  const handleInviteEmail = useCallback(
+    (email: string) => {
+      // Support comma-separated emails
+      const emails = email
+        .split(",")
+        .map((e) => e.trim())
+        .filter(Boolean);
+
+      inviteMemberMutation.mutate({
+        teamId,
+        usernameOrEmail: emails.length === 1 ? emails[0] : emails,
+        language: "en",
+        creationSource: CreationSource.WEBAPP,
+      });
+    },
+    [teamId, inviteMemberMutation]
+  );
+
   const {
     assignRRMembersUsingSegment,
     setAssignRRMembersUsingSegment,
@@ -345,6 +379,7 @@ export function AddMembersWithSwitch({
               isRRWeightsEnabled={isRRWeightsEnabled}
               groupId={groupId}
               customClassNames={customClassNames?.teamMemberSelect}
+              onInviteEmail={handleInviteEmail}
             />
           </div>
         </>
